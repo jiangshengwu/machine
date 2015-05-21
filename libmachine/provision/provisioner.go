@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"fmt"
 
+	"strings"
+
 	"github.com/docker/machine/drivers"
+	"github.com/docker/machine/drivers/aliyun"
 	"github.com/docker/machine/libmachine/auth"
 	"github.com/docker/machine/libmachine/engine"
 	"github.com/docker/machine/libmachine/provision/pkgaction"
@@ -70,20 +73,29 @@ func Register(name string, p *RegisteredProvisioner) {
 
 func DetectProvisioner(d drivers.Driver) (Provisioner, error) {
 	var (
-		osReleaseOut bytes.Buffer
+		osReleaseOut  bytes.Buffer
+		osReleaseInfo *OsRelease
 	)
-	catOsReleaseOutput, err := drivers.RunSSHCommandFromDriver(d, "cat /etc/os-release")
-	if err != nil {
-		return nil, fmt.Errorf("Error getting SSH command: %s", err)
-	}
 
-	if _, err := osReleaseOut.ReadFrom(catOsReleaseOutput.Stdout); err != nil {
-		return nil, err
-	}
+	// 暂时对aliyun的centos6特殊处理
+	if d.DriverName() == "aliyun" && strings.Contains(d.(*aliyun.Driver).ImageId, "centos6") {
+		osReleaseInfo = &OsRelease{
+			Id: "centos6",
+		}
+	} else {
+		catOsReleaseOutput, err := drivers.RunSSHCommandFromDriver(d, "cat /etc/os-release")
+		if err != nil {
+			return nil, fmt.Errorf("Error getting SSH command: %s", err)
+		}
 
-	osReleaseInfo, err := NewOsRelease(osReleaseOut.Bytes())
-	if err != nil {
-		return nil, fmt.Errorf("Error parsing /etc/os-release file: %s", err)
+		if _, err := osReleaseOut.ReadFrom(catOsReleaseOutput.Stdout); err != nil {
+			return nil, err
+		}
+
+		osReleaseInfo, err = NewOsRelease(osReleaseOut.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("Error parsing /etc/os-release file: %s", err)
+		}
 	}
 
 	for _, p := range provisioners {
